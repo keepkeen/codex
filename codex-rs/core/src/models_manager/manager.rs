@@ -489,7 +489,17 @@ impl ModelsManager {
     fn load_remote_models_from_file() -> Result<Vec<ModelInfo>, std::io::Error> {
         let file_contents = include_str!("../../models.json");
         let response: ModelsResponse = serde_json::from_str(file_contents)?;
-        Ok(response.models)
+        let mut models = response.models;
+
+        // Load Chinese models
+        let chinese_models_contents = include_str!("../../chinese_models.json");
+        if let Ok(chinese_response) =
+            serde_json::from_str::<ModelsResponse>(chinese_models_contents)
+        {
+            models.extend(chinese_response.models);
+        }
+
+        Ok(models)
     }
 
     /// Attempt to satisfy the refresh from the cache when it matches the provider and TTL.

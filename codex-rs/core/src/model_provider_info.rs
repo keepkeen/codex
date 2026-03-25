@@ -284,6 +284,10 @@ pub const DEFAULT_OLLAMA_PORT: u16 = 11434;
 
 pub const LMSTUDIO_OSS_PROVIDER_ID: &str = "lmstudio";
 pub const OLLAMA_OSS_PROVIDER_ID: &str = "ollama";
+pub const DEEPSEEK_PROVIDER_ID: &str = "deepseek";
+pub const GLM_PROVIDER_ID: &str = "glm";
+pub const KIMI_PROVIDER_ID: &str = "kimi";
+pub const MINIMAX_PROVIDER_ID: &str = "minimax";
 
 /// Built-in default provider list.
 pub fn built_in_model_providers(
@@ -306,6 +310,10 @@ pub fn built_in_model_providers(
             LMSTUDIO_OSS_PROVIDER_ID,
             create_oss_provider(DEFAULT_LMSTUDIO_PORT, WireApi::Responses),
         ),
+        (DEEPSEEK_PROVIDER_ID, create_deepseek_provider()),
+        (GLM_PROVIDER_ID, create_glm_provider()),
+        (KIMI_PROVIDER_ID, create_kimi_provider()),
+        (MINIMAX_PROVIDER_ID, create_minimax_provider()),
     ]
     .into_iter()
     .map(|(k, v)| (k.to_string(), v))
@@ -339,6 +347,92 @@ pub fn create_oss_provider_with_base_url(base_url: &str, wire_api: WireApi) -> M
         env_key_instructions: None,
         experimental_bearer_token: None,
         wire_api,
+        query_params: None,
+        http_headers: None,
+        env_http_headers: None,
+        request_max_retries: None,
+        stream_max_retries: None,
+        stream_idle_timeout_ms: None,
+        websocket_connect_timeout_ms: None,
+        requires_openai_auth: false,
+        supports_websockets: false,
+    }
+}
+
+fn create_deepseek_provider() -> ModelProviderInfo {
+    ModelProviderInfo {
+        name: "DeepSeek".into(),
+        base_url: Some("https://api.deepseek.com".into()),
+        env_key: Some("DEEPSEEK_API_KEY".into()),
+        env_key_instructions: Some(
+            "Get your API key from https://platform.deepseek.com/api_keys".into(),
+        ),
+        experimental_bearer_token: None,
+        wire_api: WireApi::Responses,
+        query_params: None,
+        http_headers: None,
+        env_http_headers: None,
+        request_max_retries: None,
+        stream_max_retries: None,
+        stream_idle_timeout_ms: None,
+        websocket_connect_timeout_ms: None,
+        requires_openai_auth: false,
+        supports_websockets: false,
+    }
+}
+
+fn create_glm_provider() -> ModelProviderInfo {
+    ModelProviderInfo {
+        name: "GLM (Zhipu AI)".into(),
+        base_url: Some("https://open.bigmodel.cn/api/paas/v4".into()),
+        env_key: Some("GLM_API_KEY".into()),
+        env_key_instructions: Some(
+            "Get your API key from https://open.bigmodel.cn/usercenter/apikeys".into(),
+        ),
+        experimental_bearer_token: None,
+        wire_api: WireApi::Responses,
+        query_params: None,
+        http_headers: None,
+        env_http_headers: None,
+        request_max_retries: None,
+        stream_max_retries: None,
+        stream_idle_timeout_ms: None,
+        websocket_connect_timeout_ms: None,
+        requires_openai_auth: false,
+        supports_websockets: false,
+    }
+}
+
+fn create_kimi_provider() -> ModelProviderInfo {
+    ModelProviderInfo {
+        name: "Kimi (Moonshot AI)".into(),
+        base_url: Some("https://api.moonshot.cn/v1".into()),
+        env_key: Some("KIMI_API_KEY".into()),
+        env_key_instructions: Some(
+            "Get your API key from https://platform.moonshot.cn/console/api-keys".into(),
+        ),
+        experimental_bearer_token: None,
+        wire_api: WireApi::Responses,
+        query_params: None,
+        http_headers: None,
+        env_http_headers: None,
+        request_max_retries: None,
+        stream_max_retries: None,
+        stream_idle_timeout_ms: None,
+        websocket_connect_timeout_ms: None,
+        requires_openai_auth: false,
+        supports_websockets: false,
+    }
+}
+
+fn create_minimax_provider() -> ModelProviderInfo {
+    ModelProviderInfo {
+        name: "MiniMax".into(),
+        base_url: Some("https://api.minimax.chat/v1".into()),
+        env_key: Some("MINIMAX_API_KEY".into()),
+        env_key_instructions: Some("Get your API key from https://www.minimaxi.com/user-center/basic-information/interface-key".into()),
+        experimental_bearer_token: None,
+        wire_api: WireApi::Responses,
         query_params: None,
         http_headers: None,
         env_http_headers: None,
