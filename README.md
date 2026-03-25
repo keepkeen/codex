@@ -50,6 +50,38 @@ Run `codex` and select **Sign in with ChatGPT**. We recommend signing into your 
 
 You can also use Codex with an API key, but this requires [additional setup](https://developers.openai.com/codex/auth#sign-in-with-an-api-key).
 
+## 中文适配说明
+
+这个 fork 额外适配了 4 家中国模型 provider，并统一走官方更稳定的 OpenAI 兼容 `chat/completions` 路线，而不是把这些 provider 伪装成 OpenAI `responses`。
+
+- 已适配 provider：`deepseek`、`glm`、`kimi`、`minimax`
+- 内置模型：
+  - DeepSeek：`deepseek-chat`、`deepseek-reasoner`
+  - GLM：`glm-5`、`glm-4.6v`
+  - Kimi：`kimi-latest`
+  - MiniMax：`MiniMax-M2.7`、`MiniMax-M2.7-highspeed`
+- 兼容原理：
+  - 把 Codex 的工具调用和对话历史重编码成 chat-completions 兼容格式
+  - 针对 DeepSeek / Kimi / MiniMax 保留各家的 reasoning 字段
+  - 按 provider 载入独立模型目录，避免错误回退到 OpenAI 元数据
+  - 兼容旧别名 `deepseek-chat-thinking` / `deepseek-thinking`，以及旧环境变量 `KIMI_API_KEY`
+- 最小使用方式：
+
+```toml
+model_provider = "deepseek"
+model = "deepseek-chat"
+```
+
+- 需要设置对应环境变量：`DEEPSEEK_API_KEY`、`GLM_API_KEY`、`MOONSHOT_API_KEY`、`MINIMAX_API_KEY`
+- 当前限制：
+  - 这 4 家都走 HTTP SSE，不走 websocket 预热
+  - `output_schema` 目前不走 chat-completions 兼容层
+  - 图像输入只内置给 `glm-4.6v` 和 `kimi-latest`
+  - `deepseek-chat`、`deepseek-reasoner`、`glm-5`、`MiniMax-M2.7`、`MiniMax-M2.7-highspeed` 按当前适配视为文本模型
+  - 如果要走代理、自定义 header 或网关，不要覆盖内置 provider ID；新建自定义 provider，并把 `wire_api = "chat"`
+
+更完整的中文说明见 [README_CN_ADAPTER.md](./README_CN_ADAPTER.md) 和 [docs/chinese-ai-providers.md](./docs/chinese-ai-providers.md)。
+
 ## Docs
 
 - [**Codex Documentation**](https://developers.openai.com/codex)
