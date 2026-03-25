@@ -2488,6 +2488,30 @@ pub fn create_tools_json_for_responses_api(
     Ok(tools_json)
 }
 
+/// Returns JSON values compatible with Chat Completions function calling.
+pub(crate) fn create_tools_json_for_chat_completions_api(
+    tools: &[ToolSpec],
+) -> crate::error::Result<Vec<serde_json::Value>> {
+    let mut tools_json = Vec::new();
+
+    for tool in tools {
+        let ToolSpec::Function(function) = tool else {
+            continue;
+        };
+        tools_json.push(json!({
+            "type": "function",
+            "function": {
+                "name": function.name.as_str(),
+                "description": function.description.as_str(),
+                "strict": function.strict,
+                "parameters": &function.parameters,
+            },
+        }));
+    }
+
+    Ok(tools_json)
+}
+
 fn push_tool_spec(
     builder: &mut ToolRegistryBuilder,
     spec: ToolSpec,

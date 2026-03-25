@@ -36,6 +36,8 @@ use crate::api_bridge::map_api_error;
 use crate::auth::UnauthorizedRecovery;
 use crate::auth_env_telemetry::AuthEnvTelemetry;
 use crate::auth_env_telemetry::collect_auth_env_telemetry;
+use codex_api::ChatClient as ApiChatClient;
+use codex_api::ChatRequestBuilder;
 use codex_api::CompactClient as ApiCompactClient;
 use codex_api::CompactionInput as ApiCompactionInput;
 use codex_api::MemoriesClient as ApiMemoriesClient;
@@ -107,6 +109,7 @@ use crate::response_debug_context::extract_response_debug_context;
 use crate::response_debug_context::extract_response_debug_context_from_api_error;
 use crate::response_debug_context::telemetry_api_error_message;
 use crate::response_debug_context::telemetry_transport_error_message;
+use crate::tools::spec::create_tools_json_for_chat_completions_api;
 use crate::tools::spec::create_tools_json_for_responses_api;
 use crate::util::FeedbackRequestTags;
 use crate::util::emit_feedback_auth_recovery_tags;
@@ -118,6 +121,7 @@ pub const X_CODEX_TURN_METADATA_HEADER: &str = "x-codex-turn-metadata";
 pub const X_RESPONSESAPI_INCLUDE_TIMING_METRICS_HEADER: &str =
     "x-responsesapi-include-timing-metrics";
 const RESPONSES_WEBSOCKETS_V2_BETA_HEADER_VALUE: &str = "responses_websockets=2026-02-06";
+const CHAT_COMPLETIONS_ENDPOINT: &str = "/chat/completions";
 const RESPONSES_ENDPOINT: &str = "/responses";
 const RESPONSES_COMPACT_ENDPOINT: &str = "/responses/compact";
 const MEMORIES_SUMMARIZE_ENDPOINT: &str = "/memories/trace_summarize";
@@ -977,6 +981,90 @@ impl ModelClientSession {
         }
     }
 
+    #[instrument(
+        name = "model_client.stream_chat_completions",
+        level = "info",
+        skip_all,
+        fields(
+            model = %model_info.slug,
+            wire_api = %self.client.state.provider.wire_api,
+            transport = "chat_completions_http",
+            http.method = "POST",
+            api.path = "chat/completions"
+        )
+    )]
+    async fn stream_chat_completions(
+        &self,
+        prompt: &Prompt,
+        model_info: &ModelInfo,
+        session_telemetry: &SessionTelemetry,
+    ) -> Result<ResponseStream> {
+        if prompt.output_schema.is_some() {
+            return Err(CodexErr::UnsupportedOperation(
+                "output_schema is not supported for Chat Completions API".to_string(),
+            ));
+        }
+
+        let auth_manager = self.client.state.auth_manager.clone();
+        let mut auth_recovery = auth_manager
+            .as_ref()
+            .map(super::auth::AuthManager::unauthorized_recovery);
+        let mut pending_retry = PendingUnauthorizedRetry::default();
+        loop {
+            let client_setup = self.client.current_client_setup().await?;
+            let transport = ReqwestTransport::new(build_reqwest_client());
+            let request_auth_context = AuthRequestTelemetryContext::new(
+                client_setup.auth.as_ref().map(CodexAuth::auth_mode),
+                &client_setup.api_auth,
+                pending_retry,
+            );
+            let (request_telemetry, sse_telemetry) = Self::build_streaming_telemetry(
+                session_telemetry,
+                request_auth_context,
+                RequestRouteTelemetry::for_endpoint(CHAT_COMPLETIONS_ENDPOINT),
+                self.client.state.auth_env_telemetry.clone(),
+            );
+            let tools = create_tools_json_for_chat_completions_api(&prompt.tools)?;
+            let input = prompt.get_formatted_input();
+            let request = ChatRequestBuilder::new(
+                &model_info.slug,
+                &prompt.base_instructions.text,
+                &input,
+                &tools,
+            )
+            .conversation_id(Some(self.client.state.conversation_id.to_string()))
+            .session_source(Some(self.client.state.session_source.clone()))
+            .build(&client_setup.api_provider)
+            .map_err(map_api_error)?;
+
+            let client =
+                ApiChatClient::new(transport, client_setup.api_provider, client_setup.api_auth)
+                    .with_telemetry(Some(request_telemetry), Some(sse_telemetry));
+            let stream_result = client.stream_request(request).await;
+
+            match stream_result {
+                Ok(stream) => {
+                    let (stream, _) = map_response_stream(stream, session_telemetry.clone());
+                    return Ok(stream);
+                }
+                Err(ApiError::Transport(
+                    unauthorized_transport @ TransportError::Http { status, .. },
+                )) if status == StatusCode::UNAUTHORIZED => {
+                    pending_retry = PendingUnauthorizedRetry::from_recovery(
+                        handle_unauthorized(
+                            unauthorized_transport,
+                            &mut auth_recovery,
+                            session_telemetry,
+                        )
+                        .await?,
+                    );
+                    continue;
+                }
+                Err(err) => return Err(map_api_error(err)),
+            }
+        }
+    }
+
     /// Streams a turn via the OpenAI Responses API.
     ///
     /// Handles SSE fixtures, reasoning summaries, verbosity, and the
@@ -1332,6 +1420,10 @@ impl ModelClientSession {
                     turn_metadata_header,
                 )
                 .await
+            }
+            WireApi::Chat => {
+                self.stream_chat_completions(prompt, model_info, session_telemetry)
+                    .await
             }
         }
     }

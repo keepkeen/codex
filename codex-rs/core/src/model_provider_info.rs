@@ -30,7 +30,6 @@ const MAX_REQUEST_MAX_RETRIES: u64 = 100;
 
 const OPENAI_PROVIDER_NAME: &str = "OpenAI";
 pub const OPENAI_PROVIDER_ID: &str = "openai";
-const CHAT_WIRE_API_REMOVED_ERROR: &str = "`wire_api = \"chat\"` is no longer supported.\nHow to fix: set `wire_api = \"responses\"` in your provider config.\nMore info: https://github.com/openai/codex/discussions/7782";
 pub(crate) const LEGACY_OLLAMA_CHAT_PROVIDER_ID: &str = "ollama-chat";
 pub(crate) const OLLAMA_CHAT_PROVIDER_REMOVED_ERROR: &str = "`ollama-chat` is no longer supported.\nHow to fix: replace `ollama-chat` with `ollama` in `model_provider`, `oss_provider`, or `--local-provider`.\nMore info: https://github.com/openai/codex/discussions/7782";
 
@@ -38,6 +37,8 @@ pub(crate) const OLLAMA_CHAT_PROVIDER_REMOVED_ERROR: &str = "`ollama-chat` is no
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum WireApi {
+    /// The Chat Completions API exposed by OpenAI-compatible providers at `/v1/chat/completions`.
+    Chat,
     /// The Responses API exposed by OpenAI at `/v1/responses`.
     #[default]
     Responses,
@@ -46,6 +47,7 @@ pub enum WireApi {
 impl fmt::Display for WireApi {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let value = match self {
+            Self::Chat => "chat",
             Self::Responses => "responses",
         };
         f.write_str(value)
@@ -60,8 +62,11 @@ impl<'de> Deserialize<'de> for WireApi {
         let value = String::deserialize(deserializer)?;
         match value.as_str() {
             "responses" => Ok(Self::Responses),
-            "chat" => Err(serde::de::Error::custom(CHAT_WIRE_API_REMOVED_ERROR)),
-            _ => Err(serde::de::Error::unknown_variant(&value, &["responses"])),
+            "chat" => Ok(Self::Chat),
+            _ => Err(serde::de::Error::unknown_variant(
+                &value,
+                &["chat", "responses"],
+            )),
         }
     }
 }
@@ -199,6 +204,15 @@ impl ModelProviderInfo {
                 let api_key = std::env::var(env_key)
                     .ok()
                     .filter(|v| !v.trim().is_empty())
+                    .or_else(|| {
+                        if env_key == "MOONSHOT_API_KEY" {
+                            std::env::var("KIMI_API_KEY")
+                                .ok()
+                                .filter(|value| !value.trim().is_empty())
+                        } else {
+                            None
+                        }
+                    })
                     .ok_or_else(|| {
                         crate::error::CodexErr::EnvVar(EnvVarError {
                             var: env_key.clone(),
@@ -276,6 +290,31 @@ impl ModelProviderInfo {
 
     pub fn is_openai(&self) -> bool {
         self.name == OPENAI_PROVIDER_NAME
+    }
+
+    pub(crate) fn known_provider_id(&self) -> Option<&'static str> {
+        let base_url = self.base_url.as_deref();
+        let env_key = self.env_key.as_deref();
+
+        match (self.name.as_str(), base_url, env_key) {
+            ("DeepSeek", Some("https://api.deepseek.com"), Some("DEEPSEEK_API_KEY")) => {
+                Some(DEEPSEEK_PROVIDER_ID)
+            }
+            (
+                "GLM (Zhipu AI)",
+                Some("https://open.bigmodel.cn/api/paas/v4"),
+                Some("GLM_API_KEY"),
+            ) => Some(GLM_PROVIDER_ID),
+            (
+                "Kimi (Moonshot AI)",
+                Some("https://api.moonshot.cn/v1"),
+                Some("MOONSHOT_API_KEY"),
+            ) => Some(KIMI_PROVIDER_ID),
+            ("MiniMax", Some("https://api.minimaxi.com/v1"), Some("MINIMAX_API_KEY")) => {
+                Some(MINIMAX_PROVIDER_ID)
+            }
+            _ => None,
+        }
     }
 }
 
@@ -368,7 +407,7 @@ fn create_deepseek_provider() -> ModelProviderInfo {
             "Get your API key from https://platform.deepseek.com/api_keys".into(),
         ),
         experimental_bearer_token: None,
-        wire_api: WireApi::Responses,
+        wire_api: WireApi::Chat,
         query_params: None,
         http_headers: None,
         env_http_headers: None,
@@ -390,7 +429,7 @@ fn create_glm_provider() -> ModelProviderInfo {
             "Get your API key from https://open.bigmodel.cn/usercenter/apikeys".into(),
         ),
         experimental_bearer_token: None,
-        wire_api: WireApi::Responses,
+        wire_api: WireApi::Chat,
         query_params: None,
         http_headers: None,
         env_http_headers: None,
@@ -407,12 +446,12 @@ fn create_kimi_provider() -> ModelProviderInfo {
     ModelProviderInfo {
         name: "Kimi (Moonshot AI)".into(),
         base_url: Some("https://api.moonshot.cn/v1".into()),
-        env_key: Some("KIMI_API_KEY".into()),
+        env_key: Some("MOONSHOT_API_KEY".into()),
         env_key_instructions: Some(
             "Get your API key from https://platform.moonshot.cn/console/api-keys".into(),
         ),
         experimental_bearer_token: None,
-        wire_api: WireApi::Responses,
+        wire_api: WireApi::Chat,
         query_params: None,
         http_headers: None,
         env_http_headers: None,
@@ -428,11 +467,11 @@ fn create_kimi_provider() -> ModelProviderInfo {
 fn create_minimax_provider() -> ModelProviderInfo {
     ModelProviderInfo {
         name: "MiniMax".into(),
-        base_url: Some("https://api.minimax.chat/v1".into()),
+        base_url: Some("https://api.minimaxi.com/v1".into()),
         env_key: Some("MINIMAX_API_KEY".into()),
         env_key_instructions: Some("Get your API key from https://www.minimaxi.com/user-center/basic-information/interface-key".into()),
         experimental_bearer_token: None,
-        wire_api: WireApi::Responses,
+        wire_api: WireApi::Chat,
         query_params: None,
         http_headers: None,
         env_http_headers: None,

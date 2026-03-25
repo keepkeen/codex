@@ -1802,6 +1802,13 @@
       "description": "Wire protocol that the provider speaks.",
       "oneOf": [
         {
+          "description": "The Chat Completions API exposed by OpenAI-compatible providers at `/v1/chat/completions`.",
+          "enum": [
+            "chat"
+          ],
+          "type": "string"
+        },
+        {
           "description": "The Responses API exposed by OpenAI at `/v1/responses`.",
           "enum": [
             "responses"

@@ -3,6 +3,7 @@ pub mod collaboration_mode_presets;
 pub mod manager;
 pub mod model_info;
 pub mod model_presets;
+mod provider_catalog;
 
 /// Convert the client version string to a whole version string (e.g. "1.2.3-alpha.4" -> "1.2.3").
 pub fn client_version_to_whole() -> String {

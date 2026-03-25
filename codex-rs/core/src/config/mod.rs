@@ -40,8 +40,12 @@ use crate::config_loader::ResidencyRequirement;
 use crate::config_loader::Sourced;
 use crate::config_loader::load_config_layers_state;
 use crate::memories::memory_root;
+use crate::model_provider_info::DEEPSEEK_PROVIDER_ID;
+use crate::model_provider_info::GLM_PROVIDER_ID;
+use crate::model_provider_info::KIMI_PROVIDER_ID;
 use crate::model_provider_info::LEGACY_OLLAMA_CHAT_PROVIDER_ID;
 use crate::model_provider_info::LMSTUDIO_OSS_PROVIDER_ID;
+use crate::model_provider_info::MINIMAX_PROVIDER_ID;
 use crate::model_provider_info::ModelProviderInfo;
 use crate::model_provider_info::OLLAMA_CHAT_PROVIDER_REMOVED_ERROR;
 use crate::model_provider_info::OLLAMA_OSS_PROVIDER_ID;
@@ -148,10 +152,14 @@ pub const CONFIG_TOML_FILE: &str = "config.toml";
 const OPENAI_BASE_URL_ENV_VAR: &str = "OPENAI_BASE_URL";
 #[cfg(target_os = "linux")]
 const SYSTEM_BWRAP_PATH: &str = "/usr/bin/bwrap";
-const RESERVED_MODEL_PROVIDER_IDS: [&str; 3] = [
+const RESERVED_MODEL_PROVIDER_IDS: [&str; 7] = [
     OPENAI_PROVIDER_ID,
     OLLAMA_OSS_PROVIDER_ID,
     LMSTUDIO_OSS_PROVIDER_ID,
+    DEEPSEEK_PROVIDER_ID,
+    GLM_PROVIDER_ID,
+    KIMI_PROVIDER_ID,
+    MINIMAX_PROVIDER_ID,
 ];
 
 #[cfg(target_os = "linux")]

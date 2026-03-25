@@ -4114,9 +4114,28 @@ fn model_catalog_json_rejects_empty_catalog() -> std::io::Result<()> {
     )
     .expect_err("empty custom catalog should fail config load");
 
-    assert_eq!(err.kind(), ErrorKind::InvalidData);
+    assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
     assert!(
         err.to_string().contains("must contain at least one model"),
+        "unexpected error: {err}"
+    );
+    Ok(())
+}
+
+#[test]
+fn model_providers_reject_reserved_built_in_ids() -> std::io::Result<()> {
+    let err = toml::from_str::<ConfigToml>(
+        r#"
+[model_providers.deepseek]
+name = "My DeepSeek"
+base_url = "https://example.com/v1"
+wire_api = "chat"
+"#,
+    )
+    .expect_err("reserved provider ID should fail during deserialization");
+    assert!(
+        err.to_string()
+            .contains("model_providers contains reserved built-in provider IDs: `deepseek`"),
         "unexpected error: {err}"
     );
     Ok(())

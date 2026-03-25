@@ -11,9 +11,11 @@ use crate::default_client::build_reqwest_client;
 use crate::error::CodexErr;
 use crate::error::Result as CoreResult;
 use crate::model_provider_info::ModelProviderInfo;
+use crate::model_provider_info::OPENAI_PROVIDER_ID;
 use crate::models_manager::collaboration_mode_presets::CollaborationModesConfig;
 use crate::models_manager::collaboration_mode_presets::builtin_collaboration_mode_presets;
 use crate::models_manager::model_info;
+use crate::models_manager::provider_catalog;
 use crate::response_debug_context::extract_response_debug_context;
 use crate::response_debug_context::telemetry_transport_error_message;
 use crate::util::FeedbackRequestTags;
@@ -180,6 +182,7 @@ pub struct ModelsManager {
     auth_manager: Arc<AuthManager>,
     etag: RwLock<Option<String>>,
     cache_manager: ModelsCacheManager,
+    provider_id: Option<String>,
     provider: ModelProviderInfo,
 }
 
@@ -200,6 +203,7 @@ impl ModelsManager {
             auth_manager,
             model_catalog,
             collaboration_modes_config,
+            Some(OPENAI_PROVIDER_ID.to_string()),
             ModelProviderInfo::create_openai_provider(/*base_url*/ None),
         )
     }
@@ -210,6 +214,7 @@ impl ModelsManager {
         auth_manager: Arc<AuthManager>,
         model_catalog: Option<ModelsResponse>,
         collaboration_modes_config: CollaborationModesConfig,
+        provider_id: Option<String>,
         provider: ModelProviderInfo,
     ) -> Self {
         let cache_path = codex_home.join(MODEL_CACHE_FILE);
@@ -222,7 +227,7 @@ impl ModelsManager {
         let remote_models = model_catalog
             .map(|catalog| catalog.models)
             .unwrap_or_else(|| {
-                Self::load_remote_models_from_file()
+                Self::load_remote_models_from_file(provider_id.as_deref(), &provider)
                     .unwrap_or_else(|err| panic!("failed to load bundled models.json: {err}"))
             });
         Self {
@@ -232,6 +237,7 @@ impl ModelsManager {
             auth_manager,
             etag: RwLock::new(None),
             cache_manager,
+            provider_id,
             provider,
         }
     }
@@ -313,7 +319,17 @@ impl ModelsManager {
     #[instrument(level = "info", skip(self, config), fields(model = model))]
     pub async fn get_model_info(&self, model: &str, config: &Config) -> ModelInfo {
         let remote_models = self.get_remote_models().await;
-        Self::construct_model_info_from_candidates(model, &remote_models, config)
+        let lookup_model = provider_catalog::resolve_model_lookup_alias(
+            self.provider_id.as_deref(),
+            &self.provider,
+            model,
+        );
+        Self::construct_model_info_from_candidates(
+            model,
+            lookup_model.as_deref().unwrap_or(model),
+            &remote_models,
+            config,
+        )
     }
 
     fn find_model_by_longest_prefix(model: &str, candidates: &[ModelInfo]) -> Option<ModelInfo> {
@@ -353,22 +369,23 @@ impl ModelsManager {
     }
 
     fn construct_model_info_from_candidates(
-        model: &str,
+        requested_model: &str,
+        lookup_model: &str,
         candidates: &[ModelInfo],
         config: &Config,
     ) -> ModelInfo {
         // First use the normal longest-prefix match. If that misses, allow a narrowly scoped
         // retry for namespaced slugs like `custom/gpt-5.3-codex`.
-        let remote = Self::find_model_by_longest_prefix(model, candidates)
-            .or_else(|| Self::find_model_by_namespaced_suffix(model, candidates));
+        let remote = Self::find_model_by_longest_prefix(lookup_model, candidates)
+            .or_else(|| Self::find_model_by_namespaced_suffix(lookup_model, candidates));
         let model_info = if let Some(remote) = remote {
             ModelInfo {
-                slug: model.to_string(),
+                slug: requested_model.to_string(),
                 used_fallback_model_metadata: false,
                 ..remote
             }
         } else {
-            model_info::model_info_from_slug(model)
+            model_info::model_info_from_slug(requested_model)
         };
         model_info::with_config_overrides(model_info, config)
     }
@@ -472,7 +489,9 @@ impl ModelsManager {
 
     /// Replace the cached remote models and rebuild the derived presets list.
     async fn apply_remote_models(&self, models: Vec<ModelInfo>) {
-        let mut existing_models = Self::load_remote_models_from_file().unwrap_or_default();
+        let mut existing_models =
+            Self::load_remote_models_from_file(self.provider_id.as_deref(), &self.provider)
+                .unwrap_or_default();
         for model in models {
             if let Some(existing_index) = existing_models
                 .iter()
@@ -486,20 +505,11 @@ impl ModelsManager {
         *self.remote_models.write().await = existing_models;
     }
 
-    fn load_remote_models_from_file() -> Result<Vec<ModelInfo>, std::io::Error> {
-        let file_contents = include_str!("../../models.json");
-        let response: ModelsResponse = serde_json::from_str(file_contents)?;
-        let mut models = response.models;
-
-        // Load Chinese models
-        let chinese_models_contents = include_str!("../../chinese_models.json");
-        if let Ok(chinese_response) =
-            serde_json::from_str::<ModelsResponse>(chinese_models_contents)
-        {
-            models.extend(chinese_response.models);
-        }
-
-        Ok(models)
+    fn load_remote_models_from_file(
+        provider_id: Option<&str>,
+        provider: &ModelProviderInfo,
+    ) -> Result<Vec<ModelInfo>, std::io::Error> {
+        provider_catalog::bundled_models_for_provider(provider_id, provider)
     }
 
     /// Attempt to satisfy the refresh from the cache when it matches the provider and TTL.
@@ -558,6 +568,7 @@ impl ModelsManager {
             auth_manager,
             /*model_catalog*/ None,
             CollaborationModesConfig::default(),
+            provider.known_provider_id().map(str::to_string),
             provider,
         )
     }
@@ -567,7 +578,9 @@ impl ModelsManager {
         if let Some(model) = model {
             return model.to_string();
         }
-        let mut models = Self::load_remote_models_from_file().unwrap_or_default();
+        let provider = ModelProviderInfo::create_openai_provider(/*base_url*/ None);
+        let mut models = Self::load_remote_models_from_file(Some(OPENAI_PROVIDER_ID), &provider)
+            .unwrap_or_default();
         models.sort_by(|a, b| a.priority.cmp(&b.priority));
         let presets: Vec<ModelPreset> = models.into_iter().map(Into::into).collect();
         presets
@@ -588,7 +601,7 @@ impl ModelsManager {
         } else {
             &[]
         };
-        Self::construct_model_info_from_candidates(model, candidates, config)
+        Self::construct_model_info_from_candidates(model, model, candidates, config)
     }
 }
 

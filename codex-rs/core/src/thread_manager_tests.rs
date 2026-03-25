@@ -2,21 +2,17 @@ use super::*;
 use crate::codex::make_session_and_context;
 use crate::config::test_config;
 use crate::models_manager::collaboration_mode_presets::CollaborationModesConfig;
-use crate::models_manager::manager::RefreshStrategy;
 use crate::rollout::RolloutRecorder;
 use crate::tasks::interrupted_turn_history_marker;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::ReasoningItemReasoningSummary;
 use codex_protocol::models::ResponseItem;
-use codex_protocol::openai_models::ModelsResponse;
 use codex_protocol::protocol::AgentMessageEvent;
 use codex_protocol::protocol::TurnStartedEvent;
 use codex_protocol::protocol::UserMessageEvent;
-use core_test_support::responses::mount_models_once;
 use pretty_assertions::assert_eq;
 use std::time::Duration;
 use tempfile::tempdir;
-use wiremock::MockServer;
 
 fn user_msg(text: &str) -> ResponseItem {
     ResponseItem::Message {
@@ -268,21 +264,19 @@ async fn shutdown_all_threads_bounded_submits_shutdown_to_every_thread() {
 }
 
 #[tokio::test]
-async fn new_uses_configured_openai_provider_for_model_refresh() {
-    let server = MockServer::start().await;
-    let models_mock = mount_models_once(&server, ModelsResponse { models: vec![] }).await;
-
+async fn new_seeds_models_manager_from_selected_provider() {
     let temp_dir = tempdir().expect("tempdir");
     let mut config = test_config();
     config.codex_home = temp_dir.path().join("codex-home");
     config.cwd = config.codex_home.clone();
     std::fs::create_dir_all(&config.codex_home).expect("create codex home");
     config.model_catalog = None;
-    config
+    config.model_provider_id = "deepseek".to_string();
+    config.model_provider = config
         .model_providers
-        .get_mut("openai")
-        .expect("openai provider should exist")
-        .base_url = Some(server.uri());
+        .get("deepseek")
+        .expect("deepseek provider should exist")
+        .clone();
 
     let auth_manager =
         AuthManager::from_auth_for_testing(CodexAuth::create_dummy_chatgpt_auth_for_testing());
@@ -293,8 +287,13 @@ async fn new_uses_configured_openai_provider_for_model_refresh() {
         CollaborationModesConfig::default(),
     );
 
-    let _ = manager.list_models(RefreshStrategy::Online).await;
-    assert_eq!(models_mock.requests().len(), 1);
+    let model_info = manager
+        .state
+        .models_manager
+        .get_model_info("deepseek-chat", &config)
+        .await;
+    assert_eq!(model_info.slug, "deepseek-chat");
+    assert!(!model_info.used_fallback_model_metadata);
 }
 
 #[test]
