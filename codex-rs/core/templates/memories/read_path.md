@@ -89,7 +89,7 @@ Memory citation requirements:
 ```
 <oai-mem-citation>
 <citation_entries>
-MEMORY.md:234-236|note=[responsesapi citation extraction code pointer]
+MEMORY.md:234-236|note=[citation extraction code pointer]
 rollout_summaries/2026-02-17T21-23-02-LN3m-weekly_memory_report_pivot_from_git_history.md:10-12|note=[weekly report format]
 </citation_entries>
 <rollout_ids>

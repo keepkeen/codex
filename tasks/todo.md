@@ -8,6 +8,7 @@
 - [x] 运行格式化、lint 和针对性测试，记录验证结论。
 - [x] 在 `README.md` 和 `README_CN_ADAPTER.md` 补充中文说明，写清改进点、兼容原理、使用方式和限制。
 - [x] 将当前分支推送覆盖到用户 fork：`keepkeen/codex`。
+- [x] 补充 README 中相对上游仓库的差异说明，并检查 prompts/templates 是否通用。
 
 # Review
 
@@ -17,10 +18,14 @@
 - Kimi 内置目录改为 `kimi-latest` 并标记图像输入能力；环境变量以 `MOONSHOT_API_KEY` 为准，同时兼容旧的 `KIMI_API_KEY`。
 - MiniMax 内置目录改为 `MiniMax-M2.7` / `MiniMax-M2.7-highspeed`，并在 chat 请求里启用 `reasoning_split=true`。
 - 删除了已经失效的 `codex-rs/core/chinese_models.json` 和 6 份重复/过期中文文档，只保留一份准确的说明文档和精简版 `README_CN_ADAPTER.md`。
+- README 现已额外写明相对上游仓库的差异：四家 provider 统一走 `chat/completions`、非 OpenAI compact 走本地路径、模型元数据按 provider 加载、保留旧别名和旧环境变量兼容。
+- 已检查 `orchestrator`、`collaboration_mode`、`compact`、`memories` 等核心 prompt/template；结论是提示词本身基本通用，真正的边界在 chat 兼容层目前只完整支持 function tools。
+- 已将 memory 相关模板里少量 OpenAI/ResponsesAPI 示例改成通用表述，避免 README 写“通用”但模板示例仍然带上游专有语义。
 - 已执行：
   - `cargo test -p codex-api`：chat 相关新增测试通过；完整 crate 中 5 个 realtime websocket 测试因沙箱禁止本地 `bind` 失败，与本次修改无关。
-  - `cargo test -p codex-core --lib`：完整库测试中存在大量既有沙箱相关失败（wiremock 绑定端口、js_repl sandbox-exec、系统配置 API），不适合作为本次改动的结果判定。
+  - `cargo test -p codex-core`：1645 个测试通过；失败项仍然是既有沙箱相关问题（wiremock 绑定端口、managed loopback proxy、`sandbox-exec`、系统配置 API），不适合作为本次 README / template 改动的结果判定。
   - 直接相关子集测试通过：`cargo test -p codex-api chat:: --lib`、`cargo test -p codex-core deepseek_provider_uses_provider_specific_bundled_catalog --lib`、`cargo test -p codex-core kimi_provider_marks_built_in_model_as_multimodal --lib`、`cargo test -p codex-core new_seeds_models_manager_from_selected_provider --lib`、`cargo test -p codex-core model_providers_reject_reserved_built_in_ids --lib`、`cargo test -p codex-core test_deserialize_chat_wire_api --lib`。
+  - 本轮 prompt/template 定向测试通过：`cargo test -p codex-core memories::prompts:: --lib`、`cargo test -p codex-core collaboration_mode_presets:: --lib`。
 - 已执行 `just fix -p codex-api`、`just fix -p codex-core`、`just fmt`。
 - `just argument-comment-lint` 无法执行：仓库当前缺少 `./tools/argument-comment-lint/run-prebuilt-linter.sh`。
 - 本轮补充验证：

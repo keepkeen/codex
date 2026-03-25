@@ -374,7 +374,7 @@ assistant that are not validated.>
   that took the agent some effort to figure out, or a procedural shortcut that would save
   substantial time on similar work>
 - <e.g. "When the agent ran `<some eval command>` without `--some-flag`, it hit `<some config error>`. After rerunning with `--some-flag`, the eval completed. Future similar eval runs should include `--some-flag`.">
-- <e.g. "When the agent added a new ResponsesAPI endpoint, updating only the ResponsesAPI spec left ContextAPI-generated artifacts stale. After running `<some command>` for ContextAPI as well, the generated specs matched. Future similar endpoint changes should update both surfaces.">
+- <e.g. "When the agent added a new API endpoint, updating only one generated spec left another generated artifact stale. After running `<some command>` for the second surface as well, the generated outputs matched. Future similar endpoint changes should update both surfaces.">
 - <e.g. "Before the edit, `<system name>` handled `<case A>` in `<old way>`. After the patch and validation, it handled `<case A>` in `<new way>`. Future regressions in this area should check whether the old path was reintroduced.">
 - <e.g. "The agent first called `<API endpoint>` with `<wrong or incomplete request>` and got `<error or bad result>`. After switching to `some curl command here`, the request succeeded because it passed `<required param or header>`. Future similar calls should use that shape.">
 - ...
